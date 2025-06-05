@@ -2,6 +2,7 @@
 # coding=utf-8
 import torch
 
+
 def rotation_matrix(a, b):
     """Compute the rotation matrix that rotates vector a to vector b.
 
@@ -27,12 +28,14 @@ def rotation_matrix(a, b):
             [-v[1], v[0], 0],
         ]
     )
-    return torch.eye(3) + skew_sym_mat + skew_sym_mat @ skew_sym_mat * ((1 - c) / (s**2 + 1e-8))
+    return (
+        torch.eye(3)
+        + skew_sym_mat
+        + skew_sym_mat @ skew_sym_mat * ((1 - c) / (s ** 2 + 1e-8))
+    )
 
 
-def auto_orient_and_center_poses(
-    poses, method="up", center_poses=True
-):
+def auto_orient_and_center_poses(poses, method="up", center_poses=True):
     """Orients and centers the poses. We provide two methods for orientation: pca and up.
 
     pca: Orient the poses so that the principal component of the points is aligned with the axes.
@@ -86,5 +89,3 @@ def auto_orient_and_center_poses(
         oriented_poses = transform @ poses
 
     return oriented_poses, transform
-
-

@@ -4,7 +4,7 @@
 # GRAPHDECO research group, https://team.inria.fr/graphdeco
 # All rights reserved.
 #
-# This software is free for non-commercial, research and evaluation use 
+# This software is free for non-commercial, research and evaluation use
 # under the terms of the LICENSE_GS.md file.
 #
 # For inquiries contact george.drettakis@inria.fr
@@ -29,17 +29,17 @@ tanks_and_temples_scenes = ["truck", "train"]
 
 
 cap_max = {
-    'bicycle': 6400000,
-    'flowers': 5500000,
-    'garden': 5200000,
-    'stump': 4750000,
-    'treehill': 5000000,
-    'room': 2100000,
-    'counter': 2500000,
-    'kitchen': 2400000,
-    'bonsai': 3000000,
-    'truck': 2000000,
-    'train': 2500000,
+    "bicycle": 6400000,
+    "flowers": 5500000,
+    "garden": 5200000,
+    "stump": 4750000,
+    "treehill": 5000000,
+    "room": 2100000,
+    "counter": 2500000,
+    "kitchen": 2400000,
+    "bonsai": 3000000,
+    "truck": 2000000,
+    "train": 2500000,
 }
 
 parser = ArgumentParser(description="Full evaluation script parameters")
@@ -55,7 +55,7 @@ all_scenes.extend(mipnerf360_indoor_scenes)
 all_scenes.extend(tanks_and_temples_scenes)
 
 if not args.skip_training or not args.skip_rendering:
-    parser.add_argument('--mipnerf360', "-m360", required=True, type=str)
+    parser.add_argument("--mipnerf360", "-m360", required=True, type=str)
     parser.add_argument("--tanksandtemples", "-tat", required=True, type=str)
     args = parser.parse_args()
 
@@ -64,16 +64,50 @@ if not args.skip_training:
     for scene in mipnerf360_outdoor_scenes:
         source = args.mipnerf360 + "/" + scene + " --max_shapes " + str(cap_max[scene])
         common_args += " --outdoor "
-        print("python train.py -s " + source + " -i images_4 -m " + args.output_path + "/" + scene + common_args)
-        os.system("python train.py -s " + source + " -i images_4 -m " + args.output_path + "/" + scene + common_args)
+        print(
+            "python train.py -s "
+            + source
+            + " -i images_4 -m "
+            + args.output_path
+            + "/"
+            + scene
+            + common_args
+        )
+        os.system(
+            "python train.py -s "
+            + source
+            + " -i images_4 -m "
+            + args.output_path
+            + "/"
+            + scene
+            + common_args
+        )
     for scene in mipnerf360_indoor_scenes:
         source = args.mipnerf360 + "/" + scene + " --max_shapes " + str(cap_max[scene])
         common_args += ""
-        os.system("python train.py -s " + source + " -i images_2 -m " + args.output_path + "/" + scene + common_args)
+        os.system(
+            "python train.py -s "
+            + source
+            + " -i images_2 -m "
+            + args.output_path
+            + "/"
+            + scene
+            + common_args
+        )
     for scene in tanks_and_temples_scenes:
-        source = args.tanksandtemples + "/" + scene + " --max_shapes " + str(cap_max[scene])
+        source = (
+            args.tanksandtemples + "/" + scene + " --max_shapes " + str(cap_max[scene])
+        )
         common_args += " --outdoor "
-        os.system("python train.py -s " + source + " -m " + args.output_path + "/" + scene + common_args)
+        os.system(
+            "python train.py -s "
+            + source
+            + " -m "
+            + args.output_path
+            + "/"
+            + scene
+            + common_args
+        )
 
 if not args.skip_rendering:
     all_sources = []
@@ -87,11 +121,19 @@ if not args.skip_rendering:
     common_args = " --quiet --eval --skip_train"
     for scene, source in zip(all_scenes, all_sources):
         # os.system("python render.py --iteration 7000 -s " + source + " -m " + args.output_path + "/" + scene + common_args)
-        os.system("python render.py --iteration 30000 -s " + source + " -m " + args.output_path + "/" + scene + common_args)
+        os.system(
+            "python render.py --iteration 30000 -s "
+            + source
+            + " -m "
+            + args.output_path
+            + "/"
+            + scene
+            + common_args
+        )
 
 if not args.skip_metrics:
     scenes_string = ""
     for scene in all_scenes:
-        scenes_string += "\"" + args.output_path + "/" + scene + "\" "
+        scenes_string += '"' + args.output_path + "/" + scene + '" '
 
     os.system("python metrics.py -m " + scenes_string)

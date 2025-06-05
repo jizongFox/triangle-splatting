@@ -3,10 +3,21 @@ import numpy as np
 from utils.sh_utils import eval_sh
 import argparse
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Convert a checkpoint to a colored OFF file.")
-    parser.add_argument("--checkpoint_path", type=str, help="Path to the input checkpoint file (e.g., point_cloud_state_dict.pt)")
-    parser.add_argument("--output_name", type=str, help="Name of the output OFF file (e.g., mesh_colored.off)")
+    parser = argparse.ArgumentParser(
+        description="Convert a checkpoint to a colored OFF file."
+    )
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        help="Path to the input checkpoint file (e.g., point_cloud_state_dict.pt)",
+    )
+    parser.add_argument(
+        "--output_name",
+        type=str,
+        help="Name of the output OFF file (e.g., mesh_colored.off)",
+    )
     args = parser.parse_args()
 
     sd = torch.load(args.checkpoint_path, map_location="cpu", weights_only=False)
@@ -43,9 +54,12 @@ def main():
             f.write(f"{v[0].item()} {v[1].item()} {v[2].item()}\n")
         for i, face in enumerate(faces):
             r, g, b = colors[i].tolist()
-            f.write(f"3 {face[0].item()} {face[1].item()} {face[2].item()} {r} {g} {b} 255\n")
+            f.write(
+                f"3 {face[0].item()} {face[1].item()} {face[2].item()} {r} {g} {b} 255\n"
+            )
 
     print(f"saved {args.output_name}")
+
 
 if __name__ == "__main__":
     main()

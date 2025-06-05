@@ -77,9 +77,15 @@ def EvaluateHisto(
     if crop_volume is not None:
         s = crop_volume.crop_point_cloud(s)
         if view_crop:
-            o3d.visualization.draw_geometries([s, ])
+            o3d.visualization.draw_geometries(
+                [
+                    s,
+                ]
+            )
     else:
-        print("No bounding box provided to crop estimated point cloud, leaving it as the loaded version!!")
+        print(
+            "No bounding box provided to crop estimated point cloud, leaving it as the loaded version!!"
+        )
     s = s.voxel_down_sample(voxel_size)
     s.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=20))
     print(filename_mvs + "/" + scene_name + ".precision.ply")
@@ -88,7 +94,9 @@ def EvaluateHisto(
     if crop_volume is not None:
         t = crop_volume.crop_point_cloud(t)
     else:
-        print("No bounding box provided to crop groundtruth point cloud, leaving it as the loaded version!!")
+        print(
+            "No bounding box provided to crop groundtruth point cloud, leaving it as the loaded version!!"
+        )
 
     t = t.voxel_down_sample(voxel_size)
     t.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=20))
@@ -150,8 +158,7 @@ def EvaluateHisto(
         cum_source,
         edges_target,
         cum_target,
-    ] = get_f1_score_histo2(threshold, filename_mvs, plot_stretch, distance1,
-                            distance2)
+    ] = get_f1_score_histo2(threshold, filename_mvs, plot_stretch, distance1, distance2)
     np.savetxt(filename_mvs + "/" + scene_name + ".recall.txt", cum_target)
     np.savetxt(filename_mvs + "/" + scene_name + ".precision.txt", cum_source)
     np.savetxt(
@@ -170,20 +177,15 @@ def EvaluateHisto(
     ]
 
 
-def get_f1_score_histo2(threshold,
-                        filename_mvs,
-                        plot_stretch,
-                        distance1,
-                        distance2,
-                        verbose=True):
+def get_f1_score_histo2(
+    threshold, filename_mvs, plot_stretch, distance1, distance2, verbose=True
+):
     print("[get_f1_score_histo2]")
     dist_threshold = threshold
     if len(distance1) and len(distance2):
 
-        recall = float(sum(d < threshold for d in distance2)) / float(
-            len(distance2))
-        precision = float(sum(d < threshold for d in distance1)) / float(
-            len(distance1))
+        recall = float(sum(d < threshold for d in distance2)) / float(len(distance2))
+        precision = float(sum(d < threshold for d in distance1)) / float(len(distance1))
         fscore = 2 * recall * precision / (recall + precision)
         num = len(distance1)
         bins = np.arange(0, dist_threshold * plot_stretch, dist_threshold / 100)

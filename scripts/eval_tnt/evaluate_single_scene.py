@@ -17,16 +17,25 @@ import json
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(
-        description='Arguments to evaluate the mesh.'
+    parser = argparse.ArgumentParser(description="Arguments to evaluate the mesh.")
+
+    parser.add_argument(
+        "--input_mesh", type=str, help="path to the mesh to be evaluated"
     )
-
-    parser.add_argument('--input_mesh', type=str,  help='path to the mesh to be evaluated')
-    parser.add_argument('--scene', type=str,  help='scan id of the input mesh')
-    parser.add_argument('--output_dir', type=str, default='evaluation_results_single', help='path to the output folder')
-    parser.add_argument('--TNT', type=str,  default='Offical_DTU_Dataset', help='path to the GT DTU point clouds')
+    parser.add_argument("--scene", type=str, help="scan id of the input mesh")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="evaluation_results_single",
+        help="path to the output folder",
+    )
+    parser.add_argument(
+        "--TNT",
+        type=str,
+        default="Offical_DTU_Dataset",
+        help="path to the GT DTU point clouds",
+    )
     args = parser.parse_args()
-
 
     TNT_Dataset = args.TNT
     out_dir = args.output_dir

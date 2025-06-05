@@ -39,6 +39,7 @@ import numpy as np
 import open3d as o3d
 import os
 import argparse
+
 # import torch
 
 from config import scenes_tau_dict
@@ -48,6 +49,7 @@ from registration import (
     registration_unif,
     read_trajectory,
 )
+
 # from help_func import auto_orient_and_center_poses
 from trajectory_io import CameraPose
 from evaluation import EvaluateHisto
@@ -76,7 +78,7 @@ def run_evaluation(dataset_dir, traj_path, ply_path, out_dir, view_crop):
     # this is for groundtruth pointcloud, we can use it
     alignment = os.path.join(dataset_dir, scene + "_trans.txt")
     gt_filen = os.path.join(dataset_dir, scene + ".ply")
-    # this crop file is also w.r.t the groundtruth pointcloud, we can use it. 
+    # this crop file is also w.r.t the groundtruth pointcloud, we can use it.
     # Otherwise we have to crop the estimated pointcloud by ourself
     cropfile = os.path.join(dataset_dir, scene + ".json")
     # this is not so necessary
@@ -92,6 +94,7 @@ def run_evaluation(dataset_dir, traj_path, ply_path, out_dir, view_crop):
     pcd = o3d.io.read_point_cloud(ply_path)
     # add center points
     import trimesh
+
     mesh = trimesh.load_mesh(ply_path)
     # add center points
     sampled_vertices = mesh.vertices[mesh.faces].mean(axis=1)
@@ -102,36 +105,37 @@ def run_evaluation(dataset_dir, traj_path, ply_path, out_dir, view_crop):
     #                     [4, 1, 4],
     #                     [1, 4, 4]],dtype=np.float32) / 9.0
     # sampled_vertices = np.sum(face_vertices.reshape(-1, 1, 3, 3) * weights.reshape(1, 4, 3, 1), axis=2).reshape(-1, 3)
-    
+
     vertices = np.concatenate([mesh.vertices, sampled_vertices], axis=0)
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(vertices)
     ### end add center points
-    
+
     print(gt_filen)
     gt_pcd = o3d.io.read_point_cloud(gt_filen)
 
     gt_trans = np.loadtxt(alignment)
     print(traj_path)
     traj_to_register = []
-    if traj_path.endswith('.npy'):
+    if traj_path.endswith(".npy"):
         ld = np.load(traj_path)
         for i in range(len(ld)):
             traj_to_register.append(CameraPose(meta=None, mat=ld[i]))
-    elif traj_path.endswith('.json'): # instant-npg or sdfstudio format
+    elif traj_path.endswith(".json"):  # instant-npg or sdfstudio format
         import json
-        with open(traj_path, encoding='UTF-8') as f:
+
+        with open(traj_path, encoding="UTF-8") as f:
             meta = json.load(f)
         poses_dict = {}
-        for i, frame in enumerate(meta['frames']):
-            filepath = frame['file_path']
+        for i, frame in enumerate(meta["frames"]):
+            filepath = frame["file_path"]
             new_i = int(filepath[13:18]) - 1
-            poses_dict[new_i] = np.array(frame['transform_matrix'])
+            poses_dict[new_i] = np.array(frame["transform_matrix"])
         poses = []
         for i in range(len(poses_dict)):
             poses.append(poses_dict[i])
         poses = torch.from_numpy(np.array(poses).astype(np.float32))
-        poses, _ = auto_orient_and_center_poses(poses, method='up', center_poses=True)
+        poses, _ = auto_orient_and_center_poses(poses, method="up", center_poses=True)
         scale_factor = 1.0 / float(torch.max(torch.abs(poses[:, :3, 3])))
         poses[:, :3, 3] *= scale_factor
         poses = poses.numpy()
@@ -143,23 +147,25 @@ def run_evaluation(dataset_dir, traj_path, ply_path, out_dir, view_crop):
     print(colmap_ref_logfile)
     gt_traj_col = read_trajectory(colmap_ref_logfile)
 
-    trajectory_transform = trajectory_alignment(map_file, traj_to_register,
-                                                gt_traj_col, gt_trans, scene)
+    trajectory_transform = trajectory_alignment(
+        map_file, traj_to_register, gt_traj_col, gt_trans, scene
+    )
 
-    
     # big pointclouds will be downlsampled to this number to speed up alignment
     dist_threshold = dTau
     # Refine alignment by using the actual GT and MVS pointclouds
     vol = o3d.visualization.read_selection_polygon_volume(cropfile)
-    
+
     # Registration refinment in 3 iterations
-    r2 = registration_vol_ds(pcd, gt_pcd, trajectory_transform, vol, dTau,
-                             dTau * 80, 20)
-    r3 = registration_vol_ds(pcd, gt_pcd, r2.transformation, vol, dTau / 2.0,
-                             dTau * 20, 20)
+    r2 = registration_vol_ds(
+        pcd, gt_pcd, trajectory_transform, vol, dTau, dTau * 80, 20
+    )
+    r3 = registration_vol_ds(
+        pcd, gt_pcd, r2.transformation, vol, dTau / 2.0, dTau * 20, 20
+    )
     r = registration_unif(pcd, gt_pcd, r3.transformation, vol, 2 * dTau, 20)
     trajectory_transform = r.transformation
-    
+
     # Histogramms and P/R/F1
     plot_stretch = 5
     [
@@ -173,14 +179,14 @@ def run_evaluation(dataset_dir, traj_path, ply_path, out_dir, view_crop):
     ] = EvaluateHisto(
         pcd,
         gt_pcd,
-        trajectory_transform, # r.transformation,
+        trajectory_transform,  # r.transformation,
         vol,
         dTau / 2.0,
         dTau,
         out_dir,
         plot_stretch,
         scene,
-        view_crop
+        view_crop,
     )
     eva = [precision, recall, fscore]
     print("==============================")
@@ -218,8 +224,7 @@ if __name__ == "__main__":
         "--traj-path",
         type=str,
         required=True,
-        help=
-        "path to trajectory file. See `convert_to_logfile.py` to create this file.",
+        help="path to trajectory file. See `convert_to_logfile.py` to create this file.",
     )
     parser.add_argument(
         "--ply-path",
@@ -231,8 +236,7 @@ if __name__ == "__main__":
         "--out-dir",
         type=str,
         default="",
-        help=
-        "output directory, default: an evaluation directory is created in the directory of the ply file",
+        help="output directory, default: an evaluation directory is created in the directory of the ply file",
     )
     parser.add_argument(
         "--view-crop",
@@ -242,15 +246,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    args.view_crop = False #  (args.view_crop > 0)
+    args.view_crop = False  #  (args.view_crop > 0)
     if args.out_dir.strip() == "":
-        args.out_dir = os.path.join(os.path.dirname(args.ply_path),
-                                    "evaluation")
+        args.out_dir = os.path.join(os.path.dirname(args.ply_path), "evaluation")
 
     run_evaluation(
         dataset_dir=args.dataset_dir,
         traj_path=args.traj_path,
         ply_path=args.ply_path,
         out_dir=args.out_dir,
-        view_crop=args.view_crop
+        view_crop=args.view_crop,
     )
