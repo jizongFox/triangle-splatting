@@ -246,9 +246,9 @@ class TriangleModel:
         hyperparameters["denom"] = self.denom
         hyperparameters["spatial_lr_scale"] = self.spatial_lr_scale
         hyperparameters["num_points_per_triangle"] = self._num_points_per_triangle
-        hyperparameters[
-            "cumsum_of_points_per_triangle"
-        ] = self._cumsum_of_points_per_triangle
+        hyperparameters["cumsum_of_points_per_triangle"] = (
+            self._cumsum_of_points_per_triangle
+        )
         hyperparameters["number_of_points"] = self._number_of_points
         hyperparameters["max_scaling"] = self.max_scaling
         hyperparameters["max_density_factor"] = self.max_density_factor
@@ -871,6 +871,9 @@ class TriangleModel:
         )
 
     def _sample_alives(self, probs, num, big_mask, alive_indices=None):
+        if probs.sum() == 0:
+            raise ValueError("Probability distribution is empty or all zeros.")
+
         probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
         probs = torch.clamp(probs, min=0.0)
         probs = probs / (probs.sum() + torch.finfo(torch.float32).eps)
@@ -1049,12 +1052,12 @@ class TriangleModel:
             (self.get_triangles_points.shape[0]), device="cuda"
         )
 
-    def reset_opacity(self, sigma_reset):
-        opacities_new = inverse_sigmoid(
-            torch.min(self.get_opacity, torch.ones_like(self.get_opacity) * sigma_reset)
-        )
-        optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
-        self._opacity = optimizable_tensors["opacity"]
+    # def reset_opacity(self, sigma_reset):
+    #     opacities_new = inverse_sigmoid(
+    #         torch.min(self.get_opacity, torch.ones_like(self.get_opacity) * sigma_reset)
+    #     )
+    #     optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
+    #     self._opacity = optimizable_tensors["opacity"]
 
     def get_attributes_by_indices(self, indices):
 
@@ -1064,12 +1067,14 @@ class TriangleModel:
             "features_dc": self._features_dc[indices].detach().clone(),
             "features_rest": self._features_rest[indices].detach().clone(),
             "opacity": self._opacity[indices].detach().clone(),
-            "triangle_area": self.triangle_area[indices].detach().clone()
-            if hasattr(self, "triangle_area")
-            else None,
-            "mask": self._mask[indices].detach().clone()
-            if hasattr(self, "_mask")
-            else None,
+            "triangle_area": (
+                self.triangle_area[indices].detach().clone()
+                if hasattr(self, "triangle_area")
+                else None
+            ),
+            "mask": (
+                self._mask[indices].detach().clone() if hasattr(self, "_mask") else None
+            ),
         }
 
     def get_model_by_indices(self, indices):

@@ -9,21 +9,23 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
-from scene.cameras import Camera
 import numpy as np
-from utils.general_utils import PILtoTorch
+
+from scene.cameras import Camera
+from scene.dataset_readers import CameraInfo
 from utils.graphics_utils import fov2focal
 
 WARNED = False
 
 
-def loadCam(args, id, cam_info, resolution_scale):
-    orig_w, orig_h = cam_info.image.size
+def loadCam(args, id, cam_info: CameraInfo, resolution_scale):
+    assert (
+        resolution_scale == 1.0
+    ), f"We only support resolution_scale of 1.0, given: {resolution_scale}"
+    orig_w, orig_h = cam_info.width, cam_info.height
 
     if args.resolution in [1, 2, 4, 8]:
-        resolution = round(orig_w / (resolution_scale * args.resolution)), round(
-            orig_h / (resolution_scale * args.resolution)
-        )
+        scale = args.resolution
     else:  # should be a type that converts to float
         if args.resolution == -1:
             if orig_w > 1600:
@@ -41,20 +43,7 @@ def loadCam(args, id, cam_info, resolution_scale):
             global_down = orig_w / args.resolution
 
         scale = float(global_down) * float(resolution_scale)
-        resolution = (int(orig_w / scale), int(orig_h / scale))
-
-    if len(cam_info.image.split()) > 3:
-        import torch
-
-        resized_image_rgb = torch.cat(
-            [PILtoTorch(im, resolution) for im in cam_info.image.split()[:3]], dim=0
-        )
-        loaded_mask = PILtoTorch(cam_info.image.split()[3], resolution)
-        gt_image = resized_image_rgb
-    else:
-        resized_image_rgb = PILtoTorch(cam_info.image, resolution)
-        loaded_mask = None
-        gt_image = resized_image_rgb
+    assert isinstance(scale, (float, int))
 
     return Camera(
         colmap_id=cam_info.uid,
@@ -62,11 +51,16 @@ def loadCam(args, id, cam_info, resolution_scale):
         T=cam_info.T,
         FoVx=cam_info.FovX,
         FoVy=cam_info.FovY,
-        image=gt_image,
-        gt_alpha_mask=loaded_mask,
+        fx=cam_info.focal_x / scale,
+        fy=cam_info.focal_y / scale,
+        cx=cam_info.cx / scale,
+        cy=cam_info.cy / scale,
+        image_width=int(cam_info.width / scale),
+        image_height=int(cam_info.height / scale),
         image_name=cam_info.image_name,
         uid=id,
-        data_device=args.data_device,
+        image_path=cam_info.image_path,
+        mask_path=cam_info.mask_path,
     )
 
 

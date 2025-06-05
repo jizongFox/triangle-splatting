@@ -20,13 +20,15 @@
 # For inquiries contact jan.held@uliege.be
 #
 
-import torch
 import math
+from dataclasses import dataclass
+
 import numpy as np
-from typing import NamedTuple
+import torch
 
 
-class BasicPointCloud(NamedTuple):
+@dataclass()
+class BasicPointCloud:
     points: np.array
     colors: np.array
     normals: np.array
@@ -83,6 +85,41 @@ def getProjectionMatrix(znear, zfar, fovX, fovY):
     P[1, 2] = (top + bottom) / (top - bottom)
     P[3, 2] = z_sign
     P[2, 2] = z_sign * zfar / (zfar - znear)
+    P[2, 3] = -(zfar * znear) / (zfar - znear)
+    return P
+
+
+# 新增: 支持非中心主点的投影矩阵计算
+def getProjectionMatrixShift(
+    *, znear, zfar, focal_x, focal_y, cx, cy, width, height, fovX, fovY
+):
+    """
+    在 getProjectionMatrix 基础上，按主点偏移 (cx, cy) 调整视锥体并返回新的 4×4 投影矩阵。
+    """
+    tanHalfFovY = math.tan(fovY * 0.5)
+    tanHalfFovX = math.tan(fovX * 0.5)
+
+    top = tanHalfFovY * znear
+    bottom = -top
+    right = tanHalfFovX * znear
+    left = -right
+
+    # 计算近裁面上的主点偏移 (dx, dy)
+    dx = (cx - width * 0.5) / focal_x * znear  # Reason: horizontal offset on near plane
+    dy = (cy - height * 0.5) / focal_y * znear  # Reason: vertical offset on near plane
+
+    top += dy  # Reason: apply vertical shift
+    bottom += dy  # Reason: apply vertical shift
+    right += dx  # Reason: apply horizontal shift
+    left += dx  # Reason: apply horizontal shift
+
+    P = torch.zeros(4, 4)
+    P[0, 0] = 2 * znear / (right - left)
+    P[1, 1] = 2 * znear / (top - bottom)
+    P[0, 2] = (right + left) / (right - left)
+    P[1, 2] = (top + bottom) / (top - bottom)
+    P[3, 2] = 1.0  # Reason: z-direction sign
+    P[2, 2] = zfar / (zfar - znear)
     P[2, 3] = -(zfar * znear) / (zfar - znear)
     return P
 

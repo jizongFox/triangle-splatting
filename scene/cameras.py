@@ -19,28 +19,43 @@
 #
 # For inquiries contact jan.held@uliege.be
 #
+import typing as t
+from pathlib import Path
 
-import torch
-from torch import nn
 import numpy as np
-from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+import torch
+from torch import nn, Tensor
+
+from utils.graphics_utils import (
+    getWorld2View2,
+    getProjectionMatrixShift,
+)
+from PIL import Image
+from jaxtyping import Float
 
 
 class Camera(nn.Module):
+
     def __init__(
         self,
+        *,
         colmap_id,
         R,
         T,
         FoVx,
         FoVy,
-        image,
-        gt_alpha_mask,
-        image_name,
         uid,
         trans=np.array([0.0, 0.0, 0.0]),
         scale=1.0,
-        data_device="cuda",
+        fx: float,  # Reason: 添加水平焦距，用于计算主点偏移
+        fy: float,  # Reason: 添加垂直焦距，用于计算主点偏移
+        cx: float,  # Reason: 添加主点横坐标，用于偏移视锥体
+        cy: float,  # Reason: 添加主点纵坐标，用于偏移视锥体
+        image_width: int,
+        image_height: int,
+        image_name: str,
+        image_path: t.Optional[Path] = None,
+        mask_path: Path,
     ):
         super(Camera, self).__init__()
 
@@ -51,28 +66,14 @@ class Camera(nn.Module):
         self.FoVx = FoVx
         self.FoVy = FoVy
         self.image_name = image_name
-
-        try:
-            self.data_device = torch.device(data_device)
-        except Exception as e:
-            print(e)
-            print(
-                f"[Warning] Custom device {data_device} failed, fallback to default cuda device"
-            )
-            self.data_device = torch.device("cuda")
-
-        self.original_image = image.clamp(0.0, 1.0).to(self.data_device)
-        self.image_width = self.original_image.shape[2]
-        self.image_height = self.original_image.shape[1]
-
-        if gt_alpha_mask is not None:
-            # self.original_image *= gt_alpha_mask.to(self.data_device)
-            self.gt_alpha_mask = gt_alpha_mask.to(self.data_device)
-        else:
-            self.original_image *= torch.ones(
-                (1, self.image_height, self.image_width), device=self.data_device
-            )
-            self.gt_alpha_mask = None
+        self.image_path = image_path
+        self.mask_path = mask_path
+        self.image_width = image_width
+        self.image_height = image_height
+        self.fx = fx
+        self.fy = fy
+        self.cx = cx
+        self.cy = cy
 
         self.zfar = 100.0
         self.znear = 0.01
@@ -84,18 +85,65 @@ class Camera(nn.Module):
             torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1).cuda()
         )
         self.projection_matrix = (
-            getProjectionMatrix(
-                znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy
+            getProjectionMatrixShift(
+                znear=self.znear,
+                zfar=self.zfar,
+                focal_x=self.fx,
+                focal_y=self.fy,
+                cx=self.cx,
+                cy=self.cy,
+                width=self.image_width,
+                height=self.image_height,
+                fovX=self.FoVx,
+                fovY=self.FoVy,
             )
             .transpose(0, 1)
             .cuda()
-        )
+        )  # Reason: 调整为列主序
         self.full_proj_transform = (
             self.world_view_transform.unsqueeze(0).bmm(
                 self.projection_matrix.unsqueeze(0)
             )
         ).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
+
+    def extra_repr(self) -> str:
+        return (
+            f"colmap_id: {self.colmap_id}, "
+            f"image_name: {self.image_name}, "
+            f"image_path: {self.image_path}, "
+            f"mask_path: {self.mask_path}, "
+            f"image_width: {self.image_width}, "
+            f"image_height: {self.image_height}, "
+            f"fx: {self.fx}, "
+            f"fy: {self.fy}, "
+            f"cx: {self.cx}, "
+            f"cy: {self.cy}"
+        )
+
+    @property
+    def original_image(self) -> Float[Tensor, "3 H W"]:
+        image_path = self.image_path
+        assert image_path.exists()
+        with Image.open(image_path) as img:
+            img = img.resize(
+                (self.image_width, self.image_height),
+                resample=Image.Resampling.BILINEAR,
+            )
+            image = np.array(img).astype(np.float32, copy=False) / 255.0
+        return torch.from_numpy(image).permute(2, 0, 1).contiguous().cuda()
+
+    @property
+    def mask(self) -> Float[Tensor, "H W"]:
+        mask_path = self.mask_path
+        assert mask_path.exists()
+        with Image.open(mask_path) as img:
+            img = img.convert("L")
+            img = img.resize(
+                (self.image_width, self.image_height), resample=Image.Resampling.NEAREST
+            )
+            mask = np.array(img).astype(np.float32, copy=False)
+        return torch.from_numpy(mask).cuda()
 
 
 class MiniCam:

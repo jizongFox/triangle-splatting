@@ -19,43 +19,55 @@
 #
 # For inquiries contact jan.held@uliege.be
 #
-
+import json
 import os
 import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
 from PIL import Image
-from typing import NamedTuple
+from loguru import logger
+from plyfile import PlyData, PlyElement
+
 from scene.colmap_loader import (
     read_extrinsics_text,
     read_intrinsics_text,
     qvec2rotmat,
     read_extrinsics_binary,
     read_intrinsics_binary,
-    read_points3D_binary,
-    read_points3D_text,
 )
-from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
-import numpy as np
-import json
-from pathlib import Path
-from plyfile import PlyData, PlyElement
-from utils.sh_utils import SH2RGB
 from scene.triangle_model import BasicPointCloud
+from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
+from utils.sh_utils import SH2RGB
+from jaxtyping import Float
+from dataclasses import field
+import typing as t
 
 
-class CameraInfo(NamedTuple):
+@dataclass(kw_only=True)
+class CameraInfo:
     uid: int
-    R: np.array
-    T: np.array
-    FovY: np.array
-    FovX: np.array
-    image: np.array
-    image_path: str
+    """camera id in colmap"""
+    R: Float[np.ndarray, "3 3"] = field(repr=False)
+    """R for c2w """
+    T: Float[np.ndarray, "3"] = field(repr=False)
+    """T for w2c """
+    FovY: float
+    FovX: float
     image_name: str
+    image_path: Path
+    mask_path: Path
     width: int
     height: int
+    focal_x: float
+    focal_y: float
+    cx: float
+    cy: float
 
 
-class SceneInfo(NamedTuple):
+@dataclass
+class SceneInfo:
     point_cloud: BasicPointCloud
     train_cameras: list
     test_cameras: list
@@ -108,19 +120,28 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             focal_length_x = intr.params[0]
             FovY = focal2fov(focal_length_x, height)
             FovX = focal2fov(focal_length_x, width)
+            raise NotImplementedError(
+                "Colmap camera model not handled: only undistorted datasets (PINHOLE) supported!"
+            )
         elif intr.model == "PINHOLE":
             focal_length_x = intr.params[0]
             focal_length_y = intr.params[1]
             FovY = focal2fov(focal_length_y, height)
             FovX = focal2fov(focal_length_x, width)
+            cx = intr.params[2]
+            cy = intr.params[3]
         else:
             assert (
                 False
             ), "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
-
-        image_path = os.path.join(images_folder, os.path.basename(extr.name))
+        images_folder = Path(images_folder)
+        assert images_folder.exists(), images_folder
+        image_path = os.path.join(images_folder, (extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
-        image = Image.open(image_path)
+
+        mask_path = images_folder.parent / "masks" / (image_name + "jpeg.png")
+        if not mask_path.exists():
+            mask_path = None
 
         cam_info = CameraInfo(
             uid=uid,
@@ -128,11 +149,15 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             T=T,
             FovY=FovY,
             FovX=FovX,
-            image=image,
-            image_path=image_path,
-            image_name=image_name,
+            image_path=Path(image_path),
+            image_name=str(image_name),
+            mask_path=mask_path,
             width=width,
             height=height,
+            focal_x=focal_length_x,
+            focal_y=focal_length_y,
+            cx=cx,
+            cy=cy,
         )
         cam_infos.append(cam_info)
     sys.stdout.write("\n")
@@ -176,13 +201,13 @@ def storePly(path, xyz, rgb):
 
 def readColmapSceneInfo(path, images, eval, llffhold=8):
     try:
-        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
-        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
+        cameras_extrinsic_file = os.path.join(path, "sparse", "images.bin")
+        cameras_intrinsic_file = os.path.join(path, "sparse", "cameras.bin")
         cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
     except:
-        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
-        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
+        cameras_extrinsic_file = os.path.join(path, "sparse", "images.txt")
+        cameras_intrinsic_file = os.path.join(path, "sparse", "cameras.txt")
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
@@ -203,22 +228,36 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
-    ply_path = os.path.join(path, "sparse/0/points3D.ply")
-    bin_path = os.path.join(path, "sparse/0/points3D.bin")
-    txt_path = os.path.join(path, "sparse/0/points3D.txt")
+    ply_path = os.path.join(path, "sparse/points3D.ply")
+    import open3d as o3d
+
+    _ply_file = o3d.io.read_point_cloud(ply_path)
+    if not _ply_file.has_normals():
+        _ply_file.estimate_normals()
+        o3d.io.write_point_cloud(ply_path, _ply_file)
+    del _ply_file
+
+    # bin_path = os.path.join(path, "sparse/0/points3D.bin")
+    # txt_path = os.path.join(path, "sparse/0/points3D.txt")
     if not os.path.exists(ply_path):
-        print(
-            "Converting point3d.bin to .ply, will happen only the first time you open the scene."
-        )
-        try:
-            xyz, rgb, _ = read_points3D_binary(bin_path)
-        except:
-            xyz, rgb, _ = read_points3D_text(txt_path)
-        storePly(ply_path, xyz, rgb)
+        pass
+        # print(
+        #     "Converting point3d.bin to .ply, will happen only the first time you open the scene."
+        # )
+        # try:
+        #     xyz, rgb, _ = read_points3D_binary(bin_path)
+        # except:
+        #     xyz, rgb, _ = read_points3D_text(txt_path)
+        # storePly(ply_path, xyz, rgb)
     try:
         pcd = fetchPly(ply_path)
-    except:
-        pcd = None
+    except Exception as e:
+        logger.exception("Error reading point cloud from PLY file: {}".format(e))
+        # pcd = None
+        raise e
+
+    # manually downsample the point cloud if it is too large
+    logger.info("Number of points in point cloud: {}".format(len(pcd.points)))
 
     scene_info = SceneInfo(
         point_cloud=pcd,
